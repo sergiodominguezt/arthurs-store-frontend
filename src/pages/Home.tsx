@@ -1,8 +1,13 @@
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
 import { RootState, AppDispatch } from "../store/store";
 import "./Home.css";
-import { fetchProducts } from "../store/reducer";
+import {
+  fetchProducts,
+  processTransaction,
+  updateTransactionStatus,
+} from "../store/reducer";
 import {
   Box,
   Button,
@@ -20,6 +25,10 @@ import {
   Typography,
 } from "@mui/material";
 import { Remove, Add } from "@mui/icons-material";
+import { enqueueSnackbar } from "notistack";
+import Spinner from "../components/Spinner";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import CancelIcon from "@mui/icons-material/Cancel";
 
 interface Props {
   title: string;
@@ -33,9 +42,17 @@ const getCardType = (number: string) => {
 };
 
 const Home: React.FC = () => {
-  const { error, loading, products } = useSelector(
-    (state: RootState) => state.products
-  );
+  const {
+    error: productError,
+    loading: productLoading,
+    products,
+  } = useSelector((state: RootState) => state.products);
+
+  const {
+    loading: transactionLoading,
+    transactionStatus,
+    error: transactionError,
+  } = useSelector((state: RootState) => state.payments);
 
   const [selectedProduct, setSelectedProduct] = useState<number | null>(null);
   const [quantities, setQuantities] = useState<{ [key: number]: number }>({});
@@ -49,11 +66,53 @@ const Home: React.FC = () => {
   const [address, setAddress] = useState<string>("");
   const [city, setCity] = useState<string>("");
   const [customerName, setCustomerName] = useState<string>("");
+  const [errors, setErrors] = useState({
+    cardNumber: "",
+    cvc: "",
+    userEmail: "",
+  });
+  const [touched, setTouched] = useState({
+    cardNumber: false,
+    cvc: false,
+    userEmail: false,
+  });
   const dispatch = useDispatch<AppDispatch>();
+  const navigate = useNavigate();
 
   useEffect(() => {
     dispatch(fetchProducts());
   }, [dispatch]);
+
+  const handleReturnToProducts = () => {
+    dispatch(updateTransactionStatus("idle"));
+    navigate("/");
+  };
+
+  const BASE_FEE_PERCENTAGE = 0.15;
+  const DELIVERY_FEE = 15000;
+
+  const calculateSubtotal = () => {
+    if (selectedProduct !== null && products.length > 0) {
+      const selectedProductInfo = products.find(
+        (product) => product.productId === selectedProduct
+      );
+      const productQuantity = quantities[selectedProduct] || 0;
+      if (selectedProductInfo) {
+        return selectedProductInfo.price * productQuantity;
+      }
+    }
+    return 0;
+  };
+
+  const calculateBaseFee = (subtotal: number) => {
+    return subtotal * BASE_FEE_PERCENTAGE;
+  };
+
+  const calculateTotal = () => {
+    const subtotal = calculateSubtotal();
+    const baseFee = calculateBaseFee(subtotal);
+    return subtotal + baseFee + DELIVERY_FEE;
+  };
 
   const handlePaymentSubmit = () => {
     if (selectedProduct !== null) {
@@ -75,16 +134,22 @@ const Home: React.FC = () => {
           customerName,
         },
       };
-
-      console.log("Payment Data: ", paymentData);
+      dispatch(processTransaction(paymentData))
+        .then((response) => {
+          enqueueSnackbar("Payment processed successfully!", {
+            variant: "success",
+          });
+        })
+        .catch((error) => {
+          enqueueSnackbar("Payment failed. Please try again.", {
+            variant: "error",
+          });
+        });
     } else {
-      alert("Please select a product to proceed with payment.");
+      enqueueSnackbar("Please select a product to proceed with payment.", {
+        variant: "warning",
+      });
     }
-  };
-
-  const isValidCVC = (cvc: string, cardType: string) => {
-    const regex = cardType === "amex" ? /^\d{4}$/ : /^\d{3}$/;
-    return regex.test(cvc);
   };
 
   const [cardType, setCardType] = useState<string>("");
@@ -95,14 +160,66 @@ const Home: React.FC = () => {
   };
 
   const isValidCardNumber = (number: string) => {
-    const regex = /^\d{16}$/; // Adjust as necessary
+    const regex = /^\d{16}$/;
     return regex.test(number);
   };
 
   const handleCardNumberChange = (number: string) => {
     setCardNumber(number);
     setCardType(getCardType(number));
-    console.log(cardType);
+    setTouched((prevTouched) => ({
+      ...prevTouched,
+      cardNumber: true,
+    }));
+    if (!isValidCardNumber(number)) {
+      setErrors((prevErrors) => ({
+        ...prevErrors,
+        cardNumber: "Invalid card number",
+      }));
+    } else {
+      setErrors((prevErrors) => ({
+        ...prevErrors,
+        cardNumber: "",
+      }));
+    }
+  };
+
+  const handleCVCChange = (value: any) => {
+    setCvc(value);
+    setTouched((prevTouched) => ({
+      ...prevTouched,
+      cvc: true,
+    }));
+    if (value.length < 3 || value.length > 4) {
+      setErrors((prevErrors) => ({
+        ...prevErrors,
+        cvc: "CVC must be 3 or 4 digits",
+      }));
+    } else {
+      setErrors((prevErrors) => ({
+        ...prevErrors,
+        cvc: "",
+      }));
+    }
+  };
+
+  const handleUserEmailChange = (value: any) => {
+    setUserEmail(value);
+    setTouched((prevTouched) => ({
+      ...prevTouched,
+      userEmail: true,
+    }));
+    if (!isValidEmail(value)) {
+      setErrors((prevErrors) => ({
+        ...prevErrors,
+        userEmail: "Invalid email address",
+      }));
+    } else {
+      setErrors((prevErrors) => ({
+        ...prevErrors,
+        userEmail: "",
+      }));
+    }
   };
 
   const handleBuyClick = (productId: number) => {
@@ -110,19 +227,39 @@ const Home: React.FC = () => {
     if (quantity > 0) {
       setSelectedProduct(productId);
     } else {
-      alert("Quantity must be greater than 0 to proceed with payment.");
+      enqueueSnackbar(
+        "Quantity must be greater than 0 to proceed with payment."
+      );
     }
   };
+
+  const months = Array.from({ length: 12 }, (_, i) => {
+    const month = (i + 1).toString().padStart(2, "0");
+    return { value: month, label: month };
+  });
+
+  const currentYear = new Date().getFullYear() % 100;
+  const years = Array.from({ length: 10 }, (_, i) => {
+    const year = (currentYear + i).toString().padStart(2, "0");
+    return { value: year, label: year };
+  });
 
   const handleQuantityChange = (productId: number, newQuantity: number) => {
-    if (newQuantity >= 0) {
-      setQuantities((prevQuantities) => ({
-        ...prevQuantities,
-        [productId]: newQuantity,
-      }));
+    const product = products.find((p) => p.productId === productId);
+    if (product) {
+      if (newQuantity >= 0 && newQuantity <= product.stock) {
+        setQuantities((prevQuantities) => ({
+          ...prevQuantities,
+          [productId]: newQuantity,
+        }));
+      } else if (newQuantity > product.stock) {
+        enqueueSnackbar(
+          `The maximum quantity available for ${product.name} is ${product.stock}.`,
+          { variant: "warning" }
+        );
+      }
     }
   };
-
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("es-CO", {
       style: "currency",
@@ -130,10 +267,59 @@ const Home: React.FC = () => {
     }).format(amount);
   };
 
-  const installmentsOptions = [1, 3, 6, 12];
+  if (transactionLoading) {
+    const message =
+      transactionStatus === "pending"
+        ? "Payment is in validation process"
+        : "Transaction is being processed";
+    return <Spinner message={message} />;
+  }
 
-  if (loading) return <div>Loading...</div>;
-  if (error) return <div>Error: {error}</div>;
+  if (transactionStatus === "approved") {
+    return (
+      <Box
+        display="flex"
+        flexDirection="column"
+        alignItems="center"
+        justifyContent="center"
+        height="100vh"
+      >
+        <CheckCircleIcon style={{ fontSize: 80, color: "green" }} />
+        <Typography variant="h5">Your payment was approved!</Typography>
+        <Button
+          onClick={handleReturnToProducts}
+          variant="contained"
+          style={{ marginTop: 20 }}
+        >
+          Return to Products
+        </Button>
+      </Box>
+    );
+  }
+
+  if (transactionStatus === "denied") {
+    return (
+      <Box
+        display="flex"
+        flexDirection="column"
+        alignItems="center"
+        justifyContent="center"
+        height="100vh"
+      >
+        <CancelIcon style={{ fontSize: 80, color: "red" }} />
+        <Typography variant="h5">Your payment was declined.</Typography>
+        <Button
+          onClick={handleReturnToProducts}
+          variant="contained"
+          style={{ marginTop: 20 }}
+        >
+          Return to Products
+        </Button>
+      </Box>
+    );
+  }
+
+  if (productLoading) return <Spinner message="Products loading..." />;
 
   return (
     <>
@@ -149,7 +335,7 @@ const Home: React.FC = () => {
               />
               <h2 className="product-name">{product.name}</h2>
               <p className="product-description">{product.description}</p>
-
+              <p className="product-stock">Quantities left: {product.stock}</p>
               <Typography variant="h6" className="product-price">
                 {formatCurrency(product.price)}
               </Typography>
@@ -179,7 +365,10 @@ const Home: React.FC = () => {
                               (quantities[product.productId] || 0) - 1
                             )
                           }
-                          disabled={(quantities[product.productId] || 0) <= 0}
+                          disabled={
+                            (quantities[product.productId] || 0) >=
+                            product.stock
+                          }
                         >
                           <Remove />
                         </IconButton>
@@ -204,8 +393,12 @@ const Home: React.FC = () => {
                 />
                 <Button
                   variant="contained"
-                  color="primary"
                   onClick={() => handleBuyClick(product.productId)}
+                  sx={{
+                    marginTop: "10px",
+                    backgroundColor: "#b0f2ae",
+                    color: "black",
+                  }}
                 >
                   Buy
                 </Button>
@@ -218,42 +411,31 @@ const Home: React.FC = () => {
         open={selectedProduct !== null}
         onClose={() => setSelectedProduct(null)}
       >
-        <DialogTitle>Enter Card Information</DialogTitle>
+        <DialogTitle>Complete Your Purchase</DialogTitle>
         <DialogContent>
           <form>
-            <TextField
-              label="User Email"
-              type="email"
-              value={userEmail}
-              onChange={(e) => setUserEmail(e.target.value)}
-              required
-            />
-            <TextField
-              select
-              label="Installments"
-              value={installments}
-              onChange={(e) => setInstallments(Number(e.target.value))}
-              required
-            >
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((option) => (
-                <MenuItem key={option} value={option}>
-                  {option}
-                </MenuItem>
-              ))}
-            </TextField>
+            <Typography variant="h6" gutterBottom>
+              Enter your card information
+            </Typography>
             <TextField
               label="Card Holder"
               type="text"
               value={cardHolder}
               onChange={(e) => setCardHolder(e.target.value)}
+              fullWidth
               required
+              margin="normal"
             />
             <TextField
               label="Card Number"
               type="number"
               value={cardNumber}
               onChange={(e) => handleCardNumberChange(e.target.value)}
+              fullWidth
               required
+              margin="normal"
+              error={touched.cardNumber && !!errors.cardNumber}
+              helperText={touched.cardNumber && errors.cardNumber}
             />
             {cardType && (
               <img
@@ -262,74 +444,150 @@ const Home: React.FC = () => {
                 style={{ width: "50px", marginTop: "10px" }}
               />
             )}
+            <FormControl fullWidth margin="normal">
+              <InputLabel shrink id="expiration-month-label">
+                Expiration Month
+              </InputLabel>
+              <Select
+                labelId="expiration-month-label"
+                value={expirationMonth}
+                label="Expiration Month"
+                onChange={(e) => setExpirationMonth(e.target.value)}
+                required
+                displayEmpty
+              >
+                {months.map((month) => (
+                  <MenuItem key={month.value} value={month.value}>
+                    {month.label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
 
-            <TextField
-              select
-              label="Expiration Month"
-              value={expirationMonth}
-              onChange={(e) => setExpirationMonth(e.target.value)}
-              required
-            >
-              {Array.from({ length: 12 }, (_, i) => (
-                <MenuItem key={i + 1} value={String(i + 1).padStart(2, "0")}>
-                  {String(i + 1).padStart(2, "0")}
-                </MenuItem>
-              ))}
-            </TextField>
-            <TextField
-              select
-              label="Expiration Year"
-              value={expirationYear}
-              onChange={(e) => setExpirationYear(e.target.value)}
-              required
-            >
-              {Array.from({ length: 10 }, (_, i) => (
-                <MenuItem key={i + 2024} value={String(i + 24)}>
-                  {String(i + 24)}
-                </MenuItem>
-              ))}
-            </TextField>
+            <FormControl fullWidth margin="normal">
+              <InputLabel shrink id="expiration-year-label">
+                Expiration Year
+              </InputLabel>
+              <Select
+                labelId="expiration-year-label"
+                value={expirationYear}
+                label="Expiration Year"
+                onChange={(e) => setExpirationYear(e.target.value)}
+                required
+                displayEmpty
+              >
+                {years.map((year) => (
+                  <MenuItem key={year.value} value={year.value}>
+                    {year.label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
             <TextField
               label="CVC"
               type="password"
               value={cvc}
-              onChange={(e) => setCvc(e.target.value)}
+              onChange={(e) => handleCVCChange(e.target.value)}
+              fullWidth
               required
-              slotProps={{
-                htmlInput: {
-                  maxLength: 4,
-                },
-              }}
+              margin="normal"
+              slotProps={{ htmlInput: { maxLength: 4 } }}
+              error={touched.cvc && !!errors.cvc}
+              helperText={touched.cvc && errors.cvc}
             />
+            <FormControl fullWidth margin="normal">
+              <InputLabel shrink id="installments-label">
+                Installments
+              </InputLabel>
+              <Select
+                labelId="installments-label"
+                value={installments}
+                label="Installments"
+                onChange={(e) => setInstallments(Number(e.target.value))}
+                displayEmpty
+              >
+                <MenuItem value={1}>1</MenuItem>
+                <MenuItem value={3}>3</MenuItem>
+                <MenuItem value={6}>6</MenuItem>
+                <MenuItem value={12}>12</MenuItem>
+              </Select>
+            </FormControl>
+
+            <Typography variant="h6" gutterBottom marginTop={2}>
+              Enter your personal information
+            </Typography>
             <TextField
-              label="Address"
-              type="text"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
+              label="User Email"
+              type="email"
+              value={userEmail}
+              onChange={(e) => handleUserEmailChange(e.target.value)}
+              fullWidth
               required
-            />
-            <TextField
-              label="City"
-              type="text"
-              value={city}
-              onChange={(e) => setCity(e.target.value)}
-              required
+              margin="normal"
+              error={touched.userEmail && !!errors.userEmail}
+              helperText={touched.userEmail && errors.userEmail}
             />
             <TextField
               label="Customer Name"
               type="text"
               value={customerName}
               onChange={(e) => setCustomerName(e.target.value)}
+              fullWidth
               required
+              margin="normal"
+            />
+
+            <Typography variant="h6" gutterBottom marginTop={2}>
+              Enter your shipping information
+            </Typography>
+            <TextField
+              label="Address"
+              type="text"
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              fullWidth
+              required
+              margin="normal"
+            />
+            <TextField
+              label="City"
+              type="text"
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+              fullWidth
+              required
+              margin="normal"
             />
           </form>
+          <Box mt={2}>
+            <Typography variant="h6">Purchase Summary</Typography>
+            <Typography>
+              <strong>Subtotal: </strong> {formatCurrency(calculateSubtotal())}
+            </Typography>
+            <Typography>
+              <strong>Base Fee: </strong>{" "}
+              {formatCurrency(calculateBaseFee(calculateSubtotal()))}
+            </Typography>
+            <Typography>
+              <strong>Delivery Fee: </strong> {formatCurrency(DELIVERY_FEE)}
+            </Typography>
+            <Typography>
+              <strong>Total: </strong> {formatCurrency(calculateTotal())}
+            </Typography>
+          </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setSelectedProduct(null)} color="primary">
+          <Button onClick={() => setSelectedProduct(null)} color="secondary">
             Cancel
           </Button>
-          <Button type="submit" color="primary" onClick={handlePaymentSubmit}>
-            Submit
+          <Button
+            onClick={handlePaymentSubmit}
+            color="primary"
+            disabled={
+              !isValidEmail(userEmail) || !isValidCardNumber(cardNumber)
+            }
+          >
+            Pay Now
           </Button>
         </DialogActions>
       </Dialog>

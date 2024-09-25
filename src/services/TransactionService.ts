@@ -14,7 +14,6 @@ export interface DeliveryDetails {
   address: string;
   city: string;
   customerName: string;
-  productId: number;
 }
 
 export interface PaymentRequest {
@@ -22,9 +21,14 @@ export interface PaymentRequest {
   delivery: DeliveryDetails;
 }
 
+interface PaymentResponse {
+  message: string;
+  transactionStatus: "pending" | "approved" | "denied";
+}
+
 export const processPayment = async (
   paymentRequest: PaymentRequest
-): Promise<void> => {
+): Promise<PaymentResponse> => {
   const response = await fetch("http://localhost:3000/transaction", {
     method: "POST",
     headers: {
@@ -37,7 +41,5 @@ export const processPayment = async (
     throw new Error("Failed to process payment");
   }
 
-  // Puedes manejar la respuesta aquí si es necesario
-  const data = await response.json();
-  console.log("Payment processed successfully:", data);
+  return await response.json();
 };

@@ -58,41 +58,55 @@ interface PaymentState {
   loading: boolean;
   success: boolean;
   error: string | null;
+  transactionStatus: "idle" | "pending" | "approved" | "denied";
 }
 
 const initialPaymentState: PaymentState = {
   loading: false,
   success: false,
   error: null,
+  transactionStatus: "idle",
 };
 
 export const processTransaction = createAsyncThunk(
   "/transaction",
   async (paymentRequest: PaymentRequest) => {
-    return await processPayment(paymentRequest);
+    const response = await processPayment(paymentRequest);
+    return response;
   }
 );
 
 export const paymentSlice = createSlice({
   name: "payments",
   initialState: initialPaymentState,
-  reducers: {},
+  reducers: {
+    updateTransactionStatus: (
+      state,
+      action: PayloadAction<"idle" | "approved" | "denied">
+    ) => {
+      state.transactionStatus = action.payload;
+    },
+  },
   extraReducers: (builder) => {
     builder
       .addCase(processTransaction.pending, (state) => {
         state.loading = true;
         state.error = null;
+        state.transactionStatus = "pending";
       })
-      .addCase(processTransaction.fulfilled, (state) => {
+      .addCase(processTransaction.fulfilled, (state, action) => {
         state.loading = false;
         state.success = true;
+        state.transactionStatus = action.payload.transactionStatus; // Asume que el backend devuelve el estado
       })
       .addCase(processTransaction.rejected, (state, action) => {
         state.loading = false;
         state.error = action.error.message || "Failed to process transaction";
+        state.transactionStatus = "denied"; // O el estado que consideres apropiado
       });
   },
 });
 
+export const { updateTransactionStatus } = paymentSlice.actions;
 export const productReducer = productSlice.reducer;
 export const paymentReducer = paymentSlice.reducer;
