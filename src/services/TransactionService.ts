@@ -29,13 +29,16 @@ export interface PaymentResponse {
 export const processPayment = async (
   paymentRequest: PaymentRequest
 ): Promise<PaymentResponse> => {
-  const response = await fetch("http://localhost:3000/transaction", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(paymentRequest),
-  });
+  const response = await fetch(
+    "https://arthurs-store-backend.onrender.com/transaction",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(paymentRequest),
+    }
+  );
 
   if (!response.ok) {
     throw new Error("Failed to process payment");

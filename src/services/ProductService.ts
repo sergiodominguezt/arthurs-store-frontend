@@ -8,7 +8,9 @@ export interface Product {
 }
 
 export const fetchProductsFromAPI = async (): Promise<Product[]> => {
-  const response = await fetch("http://localhost:3000/products");
+  const response = await fetch(
+    "https://arthurs-store-backend.onrender.com/products"
+  );
 
   if (!response.ok) {
     throw new Error("Failed to fetch products");
