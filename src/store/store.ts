@@ -1,5 +1,6 @@
 import { configureStore } from "@reduxjs/toolkit";
 import { productReducer, paymentReducer } from "./reducer";
+import thunk from "redux-thunk";
 
 const rootReducer = {
   products: productReducer,

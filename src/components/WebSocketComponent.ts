@@ -10,8 +10,8 @@ const WebSocketComponent = () => {
     const socket = io("http://localhost:3000");
 
     socket.on("transactionStatus", (data) => {
-      const { transactionId, status } = data;
-      console.log("estado del websocket", status);
+      const { status } = data;
+      console.log("Websocket status", status);
       dispatch(updateTransactionStatus(status.toLowerCase()));
     });
 

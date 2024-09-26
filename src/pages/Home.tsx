@@ -29,16 +29,27 @@ import { enqueueSnackbar } from "notistack";
 import Spinner from "../components/Spinner";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CancelIcon from "@mui/icons-material/Cancel";
+import {
+  calculateBaseFee,
+  calculateSubtotal,
+  calculateTotal,
+  DELIVERY_FEE,
+} from "../utils/utils";
 
 interface Props {
   title: string;
 }
 
-const getCardType = (number: string) => {
+export const getCardType = (number: string) => {
   if (number.startsWith("4")) return "visa";
   if (number.startsWith("5")) return "master";
   if (number.startsWith("34") || number.startsWith("37")) return "amex";
   return "";
+};
+
+export const isValidCardNumber = (number: string) => {
+  const regex = /^\d{16}$/;
+  return regex.test(number);
 };
 
 const Home: React.FC = () => {
@@ -88,31 +99,8 @@ const Home: React.FC = () => {
     navigate("/");
   };
 
-  const BASE_FEE_PERCENTAGE = 0.15;
-  const DELIVERY_FEE = 15000;
-
-  const calculateSubtotal = () => {
-    if (selectedProduct !== null && products.length > 0) {
-      const selectedProductInfo = products.find(
-        (product) => product.productId === selectedProduct
-      );
-      const productQuantity = quantities[selectedProduct] || 0;
-      if (selectedProductInfo) {
-        return selectedProductInfo.price * productQuantity;
-      }
-    }
-    return 0;
-  };
-
-  const calculateBaseFee = (subtotal: number) => {
-    return subtotal * BASE_FEE_PERCENTAGE;
-  };
-
-  const calculateTotal = () => {
-    const subtotal = calculateSubtotal();
-    const baseFee = calculateBaseFee(subtotal);
-    return subtotal + baseFee + DELIVERY_FEE;
-  };
+  const subTotal = calculateSubtotal(selectedProduct, products, quantities);
+  const total = calculateTotal(selectedProduct, products, quantities);
 
   const handlePaymentSubmit = () => {
     if (selectedProduct !== null) {
@@ -157,11 +145,6 @@ const Home: React.FC = () => {
   const isValidEmail = (email: string) => {
     const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return regex.test(email);
-  };
-
-  const isValidCardNumber = (number: string) => {
-    const regex = /^\d{16}$/;
-    return regex.test(number);
   };
 
   const handleCardNumberChange = (number: string) => {
@@ -562,17 +545,17 @@ const Home: React.FC = () => {
           <Box mt={2}>
             <Typography variant="h6">Purchase Summary</Typography>
             <Typography>
-              <strong>Subtotal: </strong> {formatCurrency(calculateSubtotal())}
+              <strong>Subtotal: </strong> {formatCurrency(subTotal)}
             </Typography>
             <Typography>
               <strong>Base Fee: </strong>{" "}
-              {formatCurrency(calculateBaseFee(calculateSubtotal()))}
+              {formatCurrency(calculateBaseFee(subTotal))}
             </Typography>
             <Typography>
               <strong>Delivery Fee: </strong> {formatCurrency(DELIVERY_FEE)}
             </Typography>
             <Typography>
-              <strong>Total: </strong> {formatCurrency(calculateTotal())}
+              <strong>Total: </strong> {formatCurrency(total)}
             </Typography>
           </Box>
         </DialogContent>

@@ -19,7 +19,7 @@ interface Product {
   urlImage: string;
 }
 
-const initialState: State = {
+export const initialState: State = {
   products: [],
   loading: false,
   error: null,
@@ -61,7 +61,7 @@ interface PaymentState {
   transactionStatus: "idle" | "pending" | "approved" | "denied";
 }
 
-const initialPaymentState: PaymentState = {
+export const initialPaymentState: PaymentState = {
   loading: false,
   success: false,
   error: null,

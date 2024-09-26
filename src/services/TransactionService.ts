@@ -21,7 +21,7 @@ export interface PaymentRequest {
   delivery: DeliveryDetails;
 }
 
-interface PaymentResponse {
+export interface PaymentResponse {
   message: string;
   transactionStatus: "pending" | "approved" | "denied";
 }
