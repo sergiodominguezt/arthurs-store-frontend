@@ -7,7 +7,10 @@ const WebSocketComponent = () => {
   const dispatch = useDispatch();
 
   useEffect(() => {
-    const socket = io("http://localhost:3000");
+    //local
+    // const socket = io("http://localhost:3000");
+    //aws
+    const socket = io("http://http://3.132.134.51/");
 
     socket.on("transactionStatus", (data) => {
       const { status } = data;
